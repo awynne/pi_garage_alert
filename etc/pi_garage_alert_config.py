@@ -95,3 +95,12 @@ JABBER_PASSWORD = ''
 # List of Jabber IDs allowed to perform queries
 
 JABBER_AUTHORIZED_IDS = []
+
+##############################################################################
+# MQTT settings
+##############################################################################
+
+MQTT_HOST = ''
+
+#MQTT_HOST = 'test.mosquitto.org'
+

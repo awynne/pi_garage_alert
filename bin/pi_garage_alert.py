@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python
 """ Pi Garage Alert
 
 Author: Richard L. Lynch <rich@richlynch.com>
@@ -355,6 +355,51 @@ class Email(object):
             self.logger.error("Exception sending email: %s", sys.exc_info()[0])
 
 ##############################################################################
+# MQTT Support
+##############################################################################
+
+import paho.mqtt.client as mqtt
+
+class Mqtt:
+    def __init__(self, host=cfg.MQTT_HOST, clientid=None):
+        self.logger = logging.getLogger(__name__)
+        self.client = mqtt.Client(clientid)
+
+        self.client.on_connect   = self.mqtt_on_connect
+        self.client.on_message   = self.mqtt_on_message
+        self.client.on_publish   = self.mqtt_on_publish
+        self.client.on_subscribe = self.mqtt_on_subscribe
+
+        self.host = host
+	self.connected = False;
+    
+    def mqtt_on_connect(self, client, userdata, flags, rc):
+	self.connected = True
+        self.logger.info("Connected to MQTT server with result code: " + str(rc))
+
+    def mqtt_on_message(self, client, userdata, msg):
+        self.logger.info(msg.topic+" "+str(msg.payload))
+
+    def mqtt_on_publish(self, client, userdata, mid):
+        self.logger.info("MQTT message id was published: "+ str(mid))
+
+    def mqtt_on_subscribe(self, client, obj, mid, granted_qos):
+        self.logger.info("MQTT Subscribed: "+str(mid)+" "+str(granted_qos))
+
+    def connect(self):
+        self.client.connect(self.host)
+        self.client.loop_start()
+        self.logger.info("MQTT Client loop started")
+
+    def publish(self, topic, msg):
+	if (self.connected == False):
+	    self.connect()
+	    time.sleep(1)
+
+        self.logger.info("Sending MQTT message to %s: %s", topic, msg)
+        self.client.publish(topic, msg)
+    
+##############################################################################
 # Sensor support
 ##############################################################################
 
@@ -432,6 +477,8 @@ def send_alerts(logger, alert_senders, recipients, subject, msg):
             alert_senders['Twilio'].send_sms(recipient[4:], msg)
         elif recipient[:7] == 'jabber:':
             alert_senders['Jabber'].send_msg(recipient[7:], msg)
+        elif recipient[:5] == 'mqtt:':
+            alert_senders['Mqtt'].publish(recipient[5:], msg)
         else:
             logger.error("Unrecognized recipient type: %s", recipient)
 
@@ -531,7 +578,8 @@ class PiGarageAlert(object):
                 "Jabber": Jabber(door_states, time_of_last_state_change),
                 "Twitter": Twitter(),
                 "Twilio": Twilio(),
-                "Email": Email()
+                "Email": Email(),
+                "Mqtt": Mqtt()
             }
 
             # Read initial states
