@@ -361,7 +361,7 @@ class Email(object):
 import paho.mqtt.client as mqtt
 
 class Mqtt:
-    def __init__(self, host=cfg.MQTT_HOST, clientid=None):
+    def __init__(self, clientid=None):
         self.logger = logging.getLogger(__name__)
         self.client = mqtt.Client(clientid)
 
@@ -370,8 +370,11 @@ class Mqtt:
         self.client.on_publish   = self.mqtt_on_publish
         self.client.on_subscribe = self.mqtt_on_subscribe
 
-        self.host = host
 	self.connected = False;
+
+        self.host     = cfg.MQTT_HOST
+	self.user     = cfg.MQTT_USER
+	self.password = cfg.MQTT_PASSWORD
     
     def mqtt_on_connect(self, client, userdata, flags, rc):
 	self.connected = True
@@ -387,6 +390,7 @@ class Mqtt:
         self.logger.info("MQTT Subscribed: "+str(mid)+" "+str(granted_qos))
 
     def connect(self):
+	self.logger.info("Connecting to MQTT broker: %s", self.host);
         self.client.connect(self.host)
         self.client.loop_start()
         self.logger.info("MQTT Client loop started")
@@ -457,6 +461,21 @@ def rpi_status():
 ##############################################################################
 # Logging and alerts
 ##############################################################################
+
+import demjson
+
+def create_event(door, state, time_in_state):
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
+
+    event = { 
+        'timestamp': stamp,
+        'door': door,
+        'state': state,
+        'time': time_in_state,
+    }
+
+    return str(demjson.encode(event))
+
 
 def send_alerts(logger, alert_senders, recipients, subject, msg):
     """Send subject and msg to specified recipients
@@ -610,7 +629,9 @@ class PiGarageAlert(object):
                         if alert_states[name] > 0:
                             # Use the recipients of the last alert
                             recipients = door['alerts'][alert_states[name] - 1]['recipients']
-                            send_alerts(self.logger, alert_senders, recipients, name, "%s is now %s" % (name, state))
+                            event = create_event(name, state, round(time_in_state));
+                            send_alerts(self.logger, alert_senders, recipients, name, event)
+                            #send_alerts(self.logger, alert_senders, recipients, name, "%s is now %s" % (name, state))
                             alert_states[name] = 0
 
                         # Reset time_in_state
@@ -623,7 +644,9 @@ class PiGarageAlert(object):
 
                         # Has the time elapsed and is this the state to trigger the alert?
                         if time_in_state > alert['time'] and state == alert['state']:
-                            send_alerts(self.logger, alert_senders, alert['recipients'], name, "%s has been %s for %d seconds!" % (name, state, time_in_state))
+                            event = create_event(name, state, round(time_in_state));
+                            send_alerts(self.logger, alert_senders, alert['recipients'], name, event)
+                            #send_alerts(self.logger, alert_senders, alert['recipients'], name, "%s has been %s for %d seconds!" % (name, state, time_in_state))
                             alert_states[name] += 1
 
                 # Periodically log the status for debug and ensuring RPi doesn't get too hot
